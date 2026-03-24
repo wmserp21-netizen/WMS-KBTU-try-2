@@ -121,7 +121,7 @@ export default function ReportsPage({ viewerRole, ownerIds }: Props) {
     // Purchases
     let pq = supabase
       .from('purchases')
-      .select('id, doc_number, date, warehouse_id, warehouses(name), purchase_items(qty_expected, buy_price, products(name))')
+      .select('id, number, date, warehouse_id, warehouses(name), purchase_items(qty_expected, buy_price, products(name))')
       .in('status', ['received_full', 'received_partial'])
       .gte('date', from).lte('date', to)
     if (whIds.length > 0) pq = pq.in('warehouse_id', whIds)
@@ -135,7 +135,7 @@ export default function ReportsPage({ viewerRole, ownerIds }: Props) {
           key: `p-${pur.id}-${rows.length}`,
           date: pur.date,
           type: 'purchase',
-          docNumber: pur.doc_number ?? '—',
+          docNumber: pur.number ?? '—',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           product: (item.products as any)?.name ?? '—',
           warehouse: wh,
@@ -149,7 +149,7 @@ export default function ReportsPage({ viewerRole, ownerIds }: Props) {
     // Sales
     let sq = supabase
       .from('sales')
-      .select('id, doc_number, date, warehouse_id, warehouses(name), sale_items(qty, sell_price, products(name))')
+      .select('id, number, date, warehouse_id, warehouses(name), sale_items(qty, sell_price, products(name))')
       .eq('status', 'completed')
       .gte('date', from).lte('date', to)
     if (whIds.length > 0) sq = sq.in('warehouse_id', whIds)
@@ -163,7 +163,7 @@ export default function ReportsPage({ viewerRole, ownerIds }: Props) {
           key: `s-${sale.id}-${rows.length}`,
           date: sale.date,
           type: 'sale',
-          docNumber: sale.doc_number ?? '—',
+          docNumber: sale.number ?? '—',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           product: (item.products as any)?.name ?? '—',
           warehouse: wh,
@@ -177,7 +177,7 @@ export default function ReportsPage({ viewerRole, ownerIds }: Props) {
     // Returns
     let rq = supabase
       .from('returns')
-      .select('id, doc_number, date, warehouse_id, warehouses(name), return_items(qty, price, products(name))')
+      .select('id, number, date, warehouse_id, warehouses(name), return_items(qty, sell_price, products(name))')
       .eq('status', 'completed')
       .gte('date', from).lte('date', to)
     if (whIds.length > 0) rq = rq.in('warehouse_id', whIds)
@@ -191,13 +191,13 @@ export default function ReportsPage({ viewerRole, ownerIds }: Props) {
           key: `r-${ret.id}-${rows.length}`,
           date: ret.date,
           type: 'return',
-          docNumber: ret.doc_number ?? '—',
+          docNumber: ret.number ?? '—',
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           product: (item.products as any)?.name ?? '—',
           warehouse: wh,
           qty: item.qty,
-          price: item.price,
-          total: item.qty * item.price,
+          price: item.sell_price,
+          total: item.qty * item.sell_price,
         })
       }
     }
