@@ -46,6 +46,21 @@ export default function EmployeesTable({ viewerRole }: Props) {
 
   const supabase = createClient()
 
+  const getActorId = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    return user?.id ?? null
+  }
+
+  const writeLog = async (employeeId: string, action: string, note?: string) => {
+    const actorId = await getActorId()
+    await supabase.from('employee_logs').insert({
+      employee_id: employeeId,
+      actor_id: actorId,
+      action,
+      note: note ?? null,
+    })
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
 
@@ -145,6 +160,7 @@ export default function EmployeesTable({ viewerRole }: Props) {
       })
       const json = await res.json()
       if (!res.ok) { message.error(json.error); setSaving(false); return }
+      await writeLog(json.id, 'created', `${values.full_name}${values.warehouse_id ? ', склад назначен' : ''}`)
       message.success('Сотрудник создан')
     } else {
       const res = await fetch('/api/admin/users', {
@@ -169,6 +185,10 @@ export default function EmployeesTable({ viewerRole }: Props) {
           worker_id: editing.id,
         })
       }
+      const noteparts = []
+      if (values.password) noteparts.push('пароль изменён')
+      if (values.warehouse_id !== (editing.warehouse_id ?? undefined)) noteparts.push('склад изменён')
+      await writeLog(editing.id, 'updated', noteparts.length > 0 ? noteparts.join(', ') : undefined)
       message.success('Данные обновлены')
     }
 
@@ -180,6 +200,7 @@ export default function EmployeesTable({ viewerRole }: Props) {
   const toggleStatus = async (record: Employee) => {
     const newStatus = record.status === 'active' ? 'blocked' : 'active'
     await supabase.from('profiles').update({ status: newStatus }).eq('id', record.id)
+    await writeLog(record.id, newStatus === 'active' ? 'unblocked' : 'blocked')
     message.success(newStatus === 'active' ? 'Сотрудник разблокирован' : 'Сотрудник заблокирован')
     load()
   }

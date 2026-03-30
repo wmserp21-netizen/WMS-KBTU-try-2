@@ -75,10 +75,10 @@ export default function SalesTable({ viewerRole, basePath }: Props) {
     const whMap: Record<string, string> = {}
     for (const w of whs ?? []) whMap[w.id] = w.name
 
-    const { data: items } = await supabase
-      .from('sale_items')
-      .select('sale_id')
-      .in('sale_id', (sList ?? []).map(s => s.id))
+    const saleIds = (sList ?? []).map(s => s.id)
+    const { data: items } = saleIds.length > 0
+      ? await supabase.from('sale_items').select('sale_id').in('sale_id', saleIds)
+      : { data: [] }
 
     const countMap: Record<string, number> = {}
     for (const item of items ?? []) {

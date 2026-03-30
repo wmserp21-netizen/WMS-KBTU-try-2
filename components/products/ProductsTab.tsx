@@ -40,6 +40,7 @@ interface Product {
 
 interface Props {
   ownerId: string
+  readOnly?: boolean
 }
 
 const UNIT_OPTIONS = [
@@ -50,7 +51,7 @@ const UNIT_OPTIONS = [
   { value: 'уп', label: 'уп' },
 ]
 
-export default function ProductsTab({ ownerId }: Props) {
+export default function ProductsTab({ ownerId, readOnly = false }: Props) {
   const { message } = App.useApp()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -293,10 +294,10 @@ export default function ProductsTab({ ownerId }: Props) {
       render: v => v.toLocaleString('ru-RU'),
     },
     { title: 'Мин. остаток', dataIndex: 'min_stock', width: 120 },
-    {
+    ...(!readOnly ? [{
       title: 'Действия',
       width: 100,
-      render: (_, record) => (
+      render: (_: unknown, record: Product) => (
         <Space>
           <Tooltip title="Редактировать">
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
@@ -313,7 +314,7 @@ export default function ProductsTab({ ownerId }: Props) {
           </Tooltip>
         </Space>
       ),
-    },
+    }] : []),
   ]
 
   return (
@@ -336,9 +337,11 @@ export default function ProductsTab({ ownerId }: Props) {
             allowClear
           />
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          Добавить товар
-        </Button>
+        {!readOnly && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Добавить товар
+          </Button>
+        )}
       </Space>
 
       <Table
