@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Table, Button, Input, Tag, Space, Modal, Form,
-  Select, Typography, Tooltip, Popconfirm, message,
+  Select, Typography, Tooltip, Popconfirm, App,
 } from 'antd'
 import {
   PlusOutlined, SearchOutlined, EditOutlined,
@@ -21,6 +21,12 @@ interface Employee {
   status: 'active' | 'blocked'
   created_at: string
   warehouse_name?: string | null
+  warehouse_id?: string | null
+}
+
+interface Warehouse {
+  id: string
+  name: string
 }
 
 interface Props {
@@ -28,7 +34,9 @@ interface Props {
 }
 
 export default function EmployeesTable({ viewerRole }: Props) {
+  const { message } = App.useApp()
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -40,6 +48,14 @@ export default function EmployeesTable({ viewerRole }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true)
+
+    // Load available warehouses for selection
+    const { data: whData } = await supabase
+      .from('warehouses')
+      .select('id, name')
+      .eq('status', 'active')
+      .order('name')
+    setWarehouses(whData ?? [])
 
     // Get workers with their warehouse assignment
     const { data: workers } = await supabase
@@ -53,13 +69,14 @@ export default function EmployeesTable({ viewerRole }: Props) {
     // Get warehouse assignments
     const { data: assignments } = await supabase
       .from('warehouse_workers')
-      .select('worker_id, warehouses(name)')
+      .select('worker_id, warehouse_id, warehouses(name)')
 
-    const assignMap: Record<string, string> = {}
+    const assignMap: Record<string, { name: string; id: string }> = {}
     if (assignments) {
       for (const a of assignments) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        assignMap[a.worker_id] = (a.warehouses as any)?.name ?? null
+        const wh = a.warehouses as any
+        assignMap[a.worker_id] = { name: wh?.name ?? '', id: (a as any).warehouse_id ?? '' }
       }
     }
 
@@ -80,9 +97,9 @@ export default function EmployeesTable({ viewerRole }: Props) {
 
       // Also include workers not yet assigned (created by this owner — we can't filter by creator, so show all unassigned + mine)
       const filtered = workers.filter(w => myWorkerIds.has(w.id))
-      setEmployees(filtered.map(w => ({ ...w, warehouse_name: assignMap[w.id] ?? null })))
+      setEmployees(filtered.map(w => ({ ...w, warehouse_name: assignMap[w.id]?.name ?? null, warehouse_id: assignMap[w.id]?.id ?? null })))
     } else {
-      setEmployees(workers.map(w => ({ ...w, warehouse_name: assignMap[w.id] ?? null })))
+      setEmployees(workers.map(w => ({ ...w, warehouse_name: assignMap[w.id]?.name ?? null, warehouse_id: assignMap[w.id]?.id ?? null })))
     }
 
     setLoading(false)
@@ -111,6 +128,7 @@ export default function EmployeesTable({ viewerRole }: Props) {
       full_name: record.full_name,
       phone: record.phone,
       status: record.status,
+      warehouse_id: record.warehouse_id ?? undefined,
     })
     setModalOpen(true)
   }
@@ -142,6 +160,15 @@ export default function EmployeesTable({ viewerRole }: Props) {
       })
       const json = await res.json()
       if (!res.ok) { message.error(json.error); setSaving(false); return }
+
+      // Update warehouse assignment
+      await supabase.from('warehouse_workers').delete().eq('worker_id', editing.id)
+      if (values.warehouse_id) {
+        await supabase.from('warehouse_workers').insert({
+          warehouse_id: values.warehouse_id,
+          worker_id: editing.id,
+        })
+      }
       message.success('Данные обновлены')
     }
 
@@ -270,6 +297,17 @@ export default function EmployeesTable({ viewerRole }: Props) {
           )}
           <Form.Item name="phone" label="Телефон">
             <Input placeholder="+7 777 000 00 00" />
+          </Form.Item>
+          <Form.Item name="warehouse_id" label="Склад">
+            <Select
+              placeholder="Выберите склад"
+              allowClear
+              options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+              showSearch
+              filterOption={(input, opt) =>
+                String(opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
           </Form.Item>
           <Form.Item name="status" label="Статус" initialValue="active">
             <Select options={[

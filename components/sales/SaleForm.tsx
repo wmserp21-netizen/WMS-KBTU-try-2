@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Form, Select, DatePicker, Button, Table,
-  InputNumber, Space, Typography, message, Divider,
+  InputNumber, Space, Typography, Divider, App,
 } from 'antd'
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, SaveOutlined, CheckOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -38,6 +38,7 @@ interface Props {
 }
 
 export default function SaleForm({ backPath, detailBasePath }: Props) {
+  const { message } = App.useApp()
   const [form] = Form.useForm()
   const router = useRouter()
   const supabase = createClient()

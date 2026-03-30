@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Descriptions, Table, Tag, Button, Space, Breadcrumb,
-  Typography, Popconfirm, message, Spin,
+  Typography, Popconfirm, Spin, App,
 } from 'antd'
 import {
   CheckOutlined, CloseOutlined, ArrowLeftOutlined,
@@ -59,6 +59,7 @@ interface Props {
 }
 
 export default function SaleDetail({ id, viewerRole, backPath, returnsNewPath }: Props) {
+  const { message } = App.useApp()
   const [sale, setSale] = useState<Sale | null>(null)
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState(false)

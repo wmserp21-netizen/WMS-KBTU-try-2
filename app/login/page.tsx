@@ -3,15 +3,30 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Form, Input, Button, Card, Alert, Typography } from 'antd'
-import { MailOutlined, LockOutlined, DatabaseOutlined } from '@ant-design/icons'
+import { UserOutlined, LockOutlined, DatabaseOutlined } from '@ant-design/icons'
 import { createClient } from '@/lib/supabase/client'
 import { getRoleDashboard, type UserRole } from '@/lib/auth'
 
 const { Title, Text } = Typography
 
 interface LoginForm {
-  email: string
+  login: string
   password: string
+}
+
+function phoneToEmail(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  const normalized = digits.startsWith('8') ? '7' + digits.slice(1) : digits
+  return `${normalized}@wms-erp.kz`
+}
+
+function resolveEmail(login: string): string {
+  const trimmed = login.trim()
+  // If it looks like a phone (starts with +, 7, 8, or is mostly digits)
+  if (/^[+78\d][\d\s\-()]{6,}$/.test(trimmed)) {
+    return phoneToEmail(trimmed)
+  }
+  return trimmed
 }
 
 export default function LoginPage() {
@@ -24,9 +39,10 @@ export default function LoginPage() {
     setError(null)
 
     const supabase = createClient()
+    const email = resolveEmail(values.login)
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: values.email,
+      email,
       password: values.password,
     })
 
@@ -114,16 +130,13 @@ export default function LoginPage() {
           requiredMark={false}
         >
           <Form.Item
-            label="Email"
-            name="email"
-            rules={[
-              { required: true, message: 'Введите email' },
-              { type: 'email', message: 'Некорректный формат email' },
-            ]}
+            label="Email или номер телефона"
+            name="login"
+            rules={[{ required: true, message: 'Введите email или телефон' }]}
           >
             <Input
-              prefix={<MailOutlined style={{ color: '#bfbfbf' }} />}
-              placeholder="admin@example.com"
+              prefix={<UserOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="+7 777 000 00 00 или admin@example.com"
               size="large"
             />
           </Form.Item>

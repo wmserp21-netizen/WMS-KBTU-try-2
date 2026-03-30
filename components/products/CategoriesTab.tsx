@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Table, Button, Space, Modal, Form, Input,
-  Typography, Tooltip, Popconfirm, message,
+  Typography, Tooltip, Popconfirm, App,
 } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -20,6 +20,7 @@ interface Props {
 }
 
 export default function CategoriesTab({ ownerId }: Props) {
+  const { message } = App.useApp()
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)

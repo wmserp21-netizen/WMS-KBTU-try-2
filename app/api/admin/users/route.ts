@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   })
   if (createError) return NextResponse.json({ error: createError.message }, { status: 400 })
 
-  const { error: profileError } = await admin.from('profiles').insert({
+  const { error: profileError } = await admin.from('profiles').upsert({
     id: created.user.id,
     role: role ?? 'worker',
     full_name: full_name ?? null,
@@ -34,10 +34,19 @@ export async function POST(req: NextRequest) {
     too_name: too_name ?? null,
     bin_iin: bin_iin ?? null,
     status: status ?? 'active',
-  })
+  }, { onConflict: 'id' })
   if (profileError) {
     await admin.auth.admin.deleteUser(created.user.id)
     return NextResponse.json({ error: profileError.message }, { status: 400 })
+  }
+
+  // If warehouse_id provided — assign worker to warehouse
+  const { warehouse_id } = body
+  if (warehouse_id) {
+    await admin.from('warehouse_workers').upsert({
+      warehouse_id,
+      worker_id: created.user.id,
+    }, { onConflict: 'warehouse_id,worker_id' })
   }
 
   return NextResponse.json({ id: created.user.id })

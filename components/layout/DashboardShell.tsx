@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
+  App,
   Layout,
   Menu,
   Button,
@@ -130,6 +131,7 @@ export default function DashboardShell({ role, fullName, children }: Props) {
   }
 
   return (
+    <App>
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
         collapsible
@@ -254,5 +256,6 @@ export default function DashboardShell({ role, fullName, children }: Props) {
         </Content>
       </Layout>
     </Layout>
+    </App>
   )
 }

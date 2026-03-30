@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Table, Button, Input, Tag, Space, Modal, Form,
-  Select, Typography, Tooltip, Popconfirm, message,
+  Select, Typography, Tooltip, Popconfirm, App,
 } from 'antd'
 import {
   PlusOutlined, SearchOutlined, EditOutlined,
@@ -28,6 +28,7 @@ interface Client {
 }
 
 export default function ClientsPage() {
+  const { message } = App.useApp()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -86,11 +87,17 @@ export default function ClientsPage() {
     setSaving(true)
 
     if (!editing) {
-      // Create new owner
+      // If no email provided, generate from phone
+      let email = values.email?.trim()
+      if (!email && values.phone) {
+        const digits = values.phone.replace(/\D/g, '')
+        const normalized = digits.startsWith('8') ? '7' + digits.slice(1) : digits
+        email = `${normalized}@wms-erp.kz`
+      }
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...values, role: 'owner' }),
+        body: JSON.stringify({ ...values, email, role: 'owner' }),
       })
       const json = await res.json()
       if (!res.ok) { message.error(json.error); setSaving(false); return }
@@ -244,11 +251,8 @@ export default function ClientsPage() {
             <>
               <Form.Item
                 name="email"
-                label="Email"
-                rules={[
-                  { required: true, message: 'Введите email' },
-                  { type: 'email', message: 'Некорректный email' },
-                ]}
+                label="Email (если нет — заполнится из телефона)"
+                rules={[{ type: 'email', message: 'Некорректный email' }]}
               >
                 <Input placeholder="owner@example.com" />
               </Form.Item>

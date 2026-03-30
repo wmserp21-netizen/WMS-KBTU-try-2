@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Table, Button, Input, Tag, Space, Modal, Form,
-  Select, Typography, Tooltip, message, Badge,
+  Select, Typography, Tooltip, Badge, App,
 } from 'antd'
 import {
-  PlusOutlined, SearchOutlined, EditOutlined, BankOutlined,
+  PlusOutlined, SearchOutlined, EditOutlined, BankOutlined, ArrowRightOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
 const { Title } = Typography
 
@@ -27,6 +28,8 @@ interface Owner { id: string; full_name: string | null }
 interface Worker { id: string; full_name: string | null; warehouse_id?: string | null }
 
 export default function AdminWarehousesPage() {
+  const { message } = App.useApp()
+  const router = useRouter()
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [owners, setOwners] = useState<Owner[]>([])
   const [freeWorkers, setFreeWorkers] = useState<Worker[]>([])
@@ -185,7 +188,19 @@ export default function AdminWarehousesPage() {
   )
 
   const columns: ColumnsType<Warehouse> = [
-    { title: 'Наименование', dataIndex: 'name' },
+    {
+      title: 'Наименование',
+      dataIndex: 'name',
+      render: (name: string, record: Warehouse) => (
+        <Button
+          type="link"
+          style={{ padding: 0, height: 'auto', fontWeight: 500 }}
+          onClick={() => router.push(`/admin/warehouses/${record.id}`)}
+        >
+          {name}
+        </Button>
+      ),
+    },
     { title: 'Адрес', dataIndex: 'address', render: v => v ?? '—' },
     { title: 'Владелец', dataIndex: 'owner_name' },
     {
@@ -204,9 +219,12 @@ export default function AdminWarehousesPage() {
     },
     {
       title: 'Действия',
-      width: 80,
+      width: 120,
       render: (_, record) => (
         <Space>
+          <Tooltip title="Ячейки склада">
+            <Button size="small" icon={<ArrowRightOutlined />} onClick={() => router.push(`/admin/warehouses/${record.id}`)} />
+          </Tooltip>
           <Tooltip title="Редактировать">
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           </Tooltip>

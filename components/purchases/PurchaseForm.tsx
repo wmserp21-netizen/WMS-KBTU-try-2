@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Form, Input, Select, DatePicker, Button, Table,
-  InputNumber, Space, Typography, Modal, message, Divider,
+  InputNumber, Space, Typography, Modal, Divider, App,
 } from 'antd'
 import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -30,6 +30,7 @@ interface Props {
 }
 
 export default function PurchaseForm({ backPath, detailBasePath }: Props) {
+  const { message } = App.useApp()
   const [form] = Form.useForm()
   const [supplierForm] = Form.useForm()
   const router = useRouter()
@@ -265,7 +266,7 @@ export default function PurchaseForm({ backPath, detailBasePath }: Props) {
               placeholder={selectedWarehouse ? 'Выберите поставщика' : 'Сначала выберите склад'}
               disabled={!selectedWarehouse}
               options={suppliers.map(s => ({ value: s.id, label: s.name }))}
-              dropdownRender={menu => (
+              popupRender={menu => (
                 <>
                   {menu}
                   <Divider style={{ margin: '4px 0' }} />

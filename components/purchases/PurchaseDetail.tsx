@@ -3,10 +3,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Descriptions, Table, Tag, Button, Space, Breadcrumb,
-  Typography, Modal, InputNumber, message, Popconfirm, Spin,
+  Typography, Modal, InputNumber, Popconfirm, Spin, App, Select, Tooltip,
 } from 'antd'
 import {
-  CheckOutlined, ProfileOutlined, CloseOutlined, ArrowLeftOutlined,
+  CheckOutlined, ProfileOutlined, CloseOutlined, ArrowLeftOutlined, AppstoreOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { createClient } from '@/lib/supabase/client'
@@ -61,11 +61,17 @@ interface Props {
   backPath: string
 }
 
+interface Cell { id: string; code: string }
+
 export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
+  const { message } = App.useApp()
   const [purchase, setPurchase] = useState<Purchase | null>(null)
   const [loading, setLoading] = useState(true)
   const [partialOpen, setPartialOpen] = useState(false)
+  const [fullOpen, setFullOpen] = useState(false)
   const [partialQtys, setPartialQtys] = useState<Record<string, number>>({})
+  const [cellSelections, setCellSelections] = useState<Record<string, string>>({})
+  const [cells, setCells] = useState<Cell[]>([])
   const [acting, setActing] = useState(false)
 
   const supabase = createClient()
@@ -89,6 +95,14 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
 
     const { data: wh } = await supabase.from('warehouses').select('name').eq('id', p.warehouse_id).single()
     const { data: sup } = await supabase.from('suppliers').select('name').eq('id', p.supplier_id).single()
+
+    const { data: cellsData } = await supabase
+      .from('cells')
+      .select('id, code')
+      .eq('warehouse_id', p.warehouse_id)
+      .eq('status', 'active')
+      .order('code')
+    setCells(cellsData ?? [])
 
     const profileIds = [p.created_by, p.updated_by].filter(Boolean)
     const { data: profilesData } = await supabase
@@ -126,31 +140,45 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
     return user?.id ?? null
   }
 
+  const addToStockCell = async (productId: string, qty: number, cellId?: string) => {
+    if (!purchase || !cellId || qty <= 0) return
+    const { data: existing } = await supabase
+      .from('stock_cells')
+      .select('id, quantity')
+      .eq('cell_id', cellId)
+      .eq('product_id', productId)
+      .single()
+    if (existing) {
+      await supabase.from('stock_cells').update({
+        quantity: existing.quantity + qty,
+        updated_at: new Date().toISOString(),
+      }).eq('id', existing.id)
+    } else {
+      await supabase.from('stock_cells').insert({
+        cell_id: cellId,
+        product_id: productId,
+        warehouse_id: purchase.warehouse_id,
+        quantity: qty,
+      })
+    }
+  }
+
   const receiveAll = async () => {
     if (!purchase) return
     setActing(true)
     const userId = await getCurrentUserId()
 
-    // Update all items qty_actual = qty_expected
     for (const item of purchase.items) {
       await supabase.from('purchase_items').update({ qty_actual: item.qty_expected }).eq('id', item.id)
-      await supabase.from('stock').upsert({
-        product_id: item.product_id,
-        warehouse_id: purchase.warehouse_id,
-        quantity: item.qty_expected,
-      }, { onConflict: 'product_id,warehouse_id', ignoreDuplicates: false })
-
-      // We need to increment, not replace — read current and add
       const { data: currentStock } = await supabase
-        .from('stock')
-        .select('quantity')
-        .eq('product_id', item.product_id)
-        .eq('warehouse_id', purchase.warehouse_id)
-        .single()
-
+        .from('stock').select('quantity')
+        .eq('product_id', item.product_id).eq('warehouse_id', purchase.warehouse_id).single()
       await supabase.from('stock').update({
         quantity: (currentStock?.quantity ?? 0) + item.qty_expected,
       }).eq('product_id', item.product_id).eq('warehouse_id', purchase.warehouse_id)
+
+      // Write to cell if selected
+      await addToStockCell(item.product_id, item.qty_expected, cellSelections[item.id])
     }
 
     await supabase.from('purchases').update({
@@ -161,6 +189,7 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
 
     message.success('Поставка принята полностью')
     setActing(false)
+    setFullOpen(false)
     load()
   }
 
@@ -175,15 +204,13 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
 
       if (actualQty > 0) {
         const { data: currentStock } = await supabase
-          .from('stock')
-          .select('quantity')
-          .eq('product_id', item.product_id)
-          .eq('warehouse_id', purchase.warehouse_id)
-          .single()
-
+          .from('stock').select('quantity')
+          .eq('product_id', item.product_id).eq('warehouse_id', purchase.warehouse_id).single()
         await supabase.from('stock').update({
           quantity: (currentStock?.quantity ?? 0) + actualQty,
         }).eq('product_id', item.product_id).eq('warehouse_id', purchase.warehouse_id)
+
+        await addToStockCell(item.product_id, actualQty, cellSelections[item.id])
       }
     }
 
@@ -241,12 +268,45 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
     ] : []),
   ]
 
+  const cellOptions = cells.map(c => ({ value: c.id, label: c.code }))
+
+  const cellSelectCol: ColumnsType<PurchaseItem>[0] = {
+    title: (
+      <Tooltip title="Необязательно. Если ячейки не созданы — пропустите.">
+        <span><AppstoreOutlined /> Ячейка</span>
+      </Tooltip>
+    ),
+    width: 140,
+    render: (_, record) => (
+      <Select
+        placeholder="Выбрать"
+        allowClear
+        size="small"
+        style={{ width: '100%' }}
+        options={cellOptions}
+        value={cellSelections[record.id]}
+        onChange={v => setCellSelections(prev => ({ ...prev, [record.id]: v }))}
+        showSearch
+        filterOption={(input, opt) =>
+          String(opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
+        }
+      />
+    ),
+  }
+
+  const fullReceiveColumns: ColumnsType<PurchaseItem> = [
+    { title: 'Товар', dataIndex: 'product_name' },
+    { title: 'Кол-во', dataIndex: 'qty_expected', width: 90 },
+    { title: 'Ед.', dataIndex: 'product_unit', width: 60 },
+    cellSelectCol,
+  ]
+
   const partialColumns: ColumnsType<PurchaseItem> = [
     { title: 'Товар', dataIndex: 'product_name' },
     { title: 'Ожид.', dataIndex: 'qty_expected', width: 90 },
     {
       title: 'Факт. кол-во',
-      width: 140,
+      width: 130,
       render: (_, record) => (
         <InputNumber
           min={0}
@@ -254,9 +314,11 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
           defaultValue={record.qty_expected}
           onChange={v => setPartialQtys(prev => ({ ...prev, [record.id]: v ?? 0 }))}
           style={{ width: '100%' }}
+          size="small"
         />
       ),
     },
+    cellSelectCol,
   ]
 
   if (loading) return <Spin style={{ marginTop: 40, display: 'block', textAlign: 'center' }} />
@@ -307,27 +369,24 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
 
       {!isFinal && (
         <Space>
-          <Popconfirm
-            title="Принять полностью?"
-            description="Остатки всех товаров будут обновлены."
-            onConfirm={receiveAll}
-            okText="Да, принять"
-            cancelText="Отмена"
+          <Button
+            type="primary"
+            icon={<CheckOutlined />}
+            loading={acting}
+            onClick={() => {
+              setCellSelections({})
+              setFullOpen(true)
+            }}
           >
-            <Button
-              type="primary"
-              icon={<CheckOutlined />}
-              loading={acting}
-            >
-              Принять полностью
-            </Button>
-          </Popconfirm>
+            Принять полностью
+          </Button>
           <Button
             icon={<ProfileOutlined />}
             onClick={() => {
               const init: Record<string, number> = {}
               purchase.items.forEach(i => { init[i.id] = i.qty_expected })
               setPartialQtys(init)
+              setCellSelections({})
               setPartialOpen(true)
             }}
             loading={acting}
@@ -350,6 +409,33 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
         </Space>
       )}
 
+      {/* Full receive modal */}
+      <Modal
+        title="Принять полностью"
+        open={fullOpen}
+        onCancel={() => setFullOpen(false)}
+        onOk={receiveAll}
+        confirmLoading={acting}
+        okText="Подтвердить приёмку"
+        cancelText="Отмена"
+        width={560}
+      >
+        <Table
+          columns={fullReceiveColumns}
+          dataSource={purchase.items}
+          rowKey="id"
+          pagination={false}
+          size="small"
+          style={{ marginTop: 8 }}
+        />
+        {cells.length === 0 && (
+          <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+            Ячейки для этого склада не созданы. Можно принять без указания ячеек.
+          </div>
+        )}
+      </Modal>
+
+      {/* Partial receive modal */}
       <Modal
         title="Принять частично"
         open={partialOpen}
@@ -358,7 +444,7 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
         confirmLoading={acting}
         okText="Подтвердить приёмку"
         cancelText="Отмена"
-        width={500}
+        width={620}
       >
         <Table
           columns={partialColumns}
@@ -366,7 +452,13 @@ export default function PurchaseDetail({ id, viewerRole, backPath }: Props) {
           rowKey="id"
           pagination={false}
           size="small"
+          style={{ marginTop: 8 }}
         />
+        {cells.length === 0 && (
+          <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>
+            Ячейки для этого склада не созданы. Можно принять без указания ячеек.
+          </div>
+        )}
       </Modal>
     </div>
   )

@@ -3,8 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Table, Button, Input, Select, Space, Drawer, Form,
-  InputNumber, Tag, Tooltip, Popconfirm, message, Upload,
-  Typography,
+  InputNumber, Tag, Tooltip, Popconfirm, Upload, App,
 } from 'antd'
 import {
   PlusOutlined, SearchOutlined, EditOutlined,
@@ -22,6 +21,7 @@ interface StockRow {
   quantity: number
   warehouse_name: string
 }
+
 
 interface Product {
   id: string
@@ -51,6 +51,7 @@ const UNIT_OPTIONS = [
 ]
 
 export default function ProductsTab({ ownerId }: Props) {
+  const { message } = App.useApp()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -207,12 +208,32 @@ export default function ProductsTab({ ownerId }: Props) {
     loadProducts()
   }
 
+  const [cellsByWarehouseProduct, setCellsByWarehouseProduct] = useState<Record<string, { code: string; quantity: number; cell_id: string }[]>>({})
+
+  const loadCellsForProduct = async (productId: string, warehouseId: string) => {
+    const key = `${productId}__${warehouseId}`
+    if (cellsByWarehouseProduct[key]) return
+    const { data } = await supabase
+      .from('stock_cells')
+      .select('cell_id, quantity, cells(code)')
+      .eq('product_id', productId)
+      .eq('warehouse_id', warehouseId)
+      .gt('quantity', 0)
+    const rows = (data ?? []).map((r: any) => ({
+      cell_id: r.cell_id,
+      code: r.cells?.code ?? '—',
+      quantity: r.quantity,
+    }))
+    setCellsByWarehouseProduct(prev => ({ ...prev, [key]: rows }))
+  }
+
   const expandedRowRender = (record: Product) => {
     const stockCols: ColumnsType<StockRow> = [
       { title: 'Склад', dataIndex: 'warehouse_name' },
       { title: 'Остаток', dataIndex: 'quantity' },
       {
         title: 'Статус',
+        width: 110,
         render: (_, row) => (
           row.quantity < record.min_stock
             ? <Tag color="orange">Пополнить</Tag>
@@ -227,6 +248,31 @@ export default function ProductsTab({ ownerId }: Props) {
         rowKey="warehouse_id"
         pagination={false}
         size="small"
+        expandable={{
+          expandedRowRender: (row: StockRow) => {
+            const key = `${record.id}__${row.warehouse_id}`
+            const cellRows = cellsByWarehouseProduct[key]
+            if (!cellRows) return <span style={{ color: '#999', fontSize: 12 }}>Загрузка ячеек...</span>
+            if (cellRows.length === 0) return <span style={{ color: '#999', fontSize: 12 }}>Ячейки не назначены</span>
+            return (
+              <Table
+                dataSource={cellRows}
+                rowKey="cell_id"
+                size="small"
+                pagination={false}
+                style={{ margin: '0 48px' }}
+                columns={[
+                  { title: 'Ячейка', dataIndex: 'code', width: 110, render: (v: string) => <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{v}</span> },
+                  { title: 'Количество', dataIndex: 'quantity', width: 110 },
+                ]}
+              />
+            )
+          },
+          onExpand: (expanded, row: StockRow) => {
+            if (expanded) loadCellsForProduct(record.id, row.warehouse_id)
+          },
+          rowExpandable: () => true,
+        }}
       />
     )
   }
@@ -309,7 +355,7 @@ export default function ProductsTab({ ownerId }: Props) {
         title={editing ? 'Редактировать товар' : 'Добавить товар'}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={500}
+        size="large"
         extra={
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>Отмена</Button>
@@ -329,8 +375,10 @@ export default function ProductsTab({ ownerId }: Props) {
           <Form.Item name="category_id" label="Категория" rules={[{ required: true, message: 'Выберите категорию' }]}>
             <Select
               options={categories.map(c => ({ value: c.id, label: c.name }))}
-              showSearch
-              optionFilterProp="label"
+              showSearch={{
+                filterOption: (input, option) =>
+                  String(option?.label ?? '').toLowerCase().includes(input.toLowerCase()),
+              }}
             />
           </Form.Item>
           <Form.Item name="unit" label="Единица измерения" initialValue="шт">

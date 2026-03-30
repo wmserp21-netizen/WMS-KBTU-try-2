@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Table, Tag, Typography, Badge } from 'antd'
+import { Table, Tag, Typography, Badge, Button, Space, Tooltip } from 'antd'
+import { ArrowRightOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
 const { Title } = Typography
 
@@ -16,6 +18,7 @@ interface Warehouse {
 }
 
 export default function OwnerWarehousesPage() {
+  const router = useRouter()
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -48,7 +51,19 @@ export default function OwnerWarehousesPage() {
   useEffect(() => { load() }, [load])
 
   const columns: ColumnsType<Warehouse> = [
-    { title: 'Наименование', dataIndex: 'name' },
+    {
+      title: 'Наименование',
+      dataIndex: 'name',
+      render: (name: string, record: Warehouse) => (
+        <Button
+          type="link"
+          style={{ padding: 0, height: 'auto', fontWeight: 500 }}
+          onClick={() => router.push(`/owner/warehouses/${record.id}`)}
+        >
+          {name}
+        </Button>
+      ),
+    },
     { title: 'Адрес', dataIndex: 'address', render: v => v ?? '—' },
     {
       title: 'Рабочих',
@@ -62,6 +77,15 @@ export default function OwnerWarehousesPage() {
         <Tag color={v === 'active' ? 'green' : 'default'}>
           {v === 'active' ? 'Активен' : 'Закрыт'}
         </Tag>
+      ),
+    },
+    {
+      title: '',
+      width: 60,
+      render: (_: unknown, record: Warehouse) => (
+        <Tooltip title="Ячейки склада">
+          <Button size="small" icon={<ArrowRightOutlined />} onClick={() => router.push(`/owner/warehouses/${record.id}`)} />
+        </Tooltip>
       ),
     },
   ]

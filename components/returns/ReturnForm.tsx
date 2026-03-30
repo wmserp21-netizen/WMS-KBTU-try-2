@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Form, Select, DatePicker, Button, Table,
-  InputNumber, Space, Typography, message, Divider, Input,
+  InputNumber, Space, Typography, Divider, Input, App,
 } from 'antd'
 import { ArrowLeftOutlined, SaveOutlined, CheckOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -33,6 +33,7 @@ interface Props {
 }
 
 export default function ReturnForm({ backPath, detailBasePath }: Props) {
+  const { message } = App.useApp()
   const [form] = Form.useForm()
   const router = useRouter()
   const searchParams = useSearchParams()
