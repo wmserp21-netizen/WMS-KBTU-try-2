@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Form, Select, DatePicker, Button, Table,
-  InputNumber, Space, Typography, Divider, Input, App,
+  InputNumber, Space, Typography, Divider, Input, App, Modal, Spin, Alert,
 } from 'antd'
-import { ArrowLeftOutlined, SaveOutlined, CheckOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, SaveOutlined, CheckOutlined, RobotOutlined, CopyOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -44,6 +44,10 @@ export default function ReturnForm({ backPath, detailBasePath }: Props) {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
   const [lines, setLines] = useState<ReturnLine[]>([])
   const [saving, setSaving] = useState(false)
+  const [msgLoading, setMsgLoading] = useState(false)
+  const [msgOpen, setMsgOpen] = useState(false)
+  const [aiMessage, setAiMessage] = useState('')
+  const [aiAlternatives, setAiAlternatives] = useState<{ name: string; reason: string }[]>([])
 
   const generateDocNumber = useCallback(async () => {
     const { data } = await supabase.rpc('generate_doc_number', { prefix: 'RT', table_name: 'returns' })
@@ -171,6 +175,30 @@ export default function ReturnForm({ backPath, detailBasePath }: Props) {
     router.push(`${detailBasePath}/${ret.id}`)
   }
 
+  const handleGenerateMessage = async () => {
+    if (!selectedSale || lines.length === 0) return
+    setMsgLoading(true)
+    try {
+      const values = form.getFieldsValue()
+      const res = await fetch('/api/ai/return-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          warehouse_id: selectedSale.warehouse_id,
+          reason: values.reason ?? null,
+          returned_items: lines.map(l => ({ product_name: l.product_name, qty: l.return_qty, unit: l.product_unit })),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { message.error(json.error ?? 'Ошибка ИИ'); return }
+      setAiMessage(json.message ?? '')
+      setAiAlternatives(json.alternatives ?? [])
+      setMsgOpen(true)
+    } finally {
+      setMsgLoading(false)
+    }
+  }
+
   const lineColumns: ColumnsType<ReturnLine> = [
     { title: 'Товар', dataIndex: 'product_name' },
     { title: 'Ед. изм.', dataIndex: 'product_unit', width: 80 },
@@ -240,6 +268,16 @@ export default function ReturnForm({ backPath, detailBasePath }: Props) {
         <Form.Item name="reason" label="Причина возврата" style={{ maxWidth: 500 }}>
           <TextArea rows={2} placeholder="Необязательно" />
         </Form.Item>
+        <Form.Item>
+          <Button
+            icon={<RobotOutlined />}
+            onClick={handleGenerateMessage}
+            loading={msgLoading}
+            disabled={lines.length === 0}
+          >
+            Текст для покупателя
+          </Button>
+        </Form.Item>
       </Form>
 
       <Divider />
@@ -284,6 +322,53 @@ export default function ReturnForm({ backPath, detailBasePath }: Props) {
           Провести возврат
         </Button>
       </Space>
+
+      <Modal
+        title={<Space><RobotOutlined /> Текст для покупателя (ИИ)</Space>}
+        open={msgOpen}
+        onCancel={() => setMsgOpen(false)}
+        footer={<Button onClick={() => setMsgOpen(false)}>Закрыть</Button>}
+        width={600}
+      >
+        {msgLoading ? (
+          <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong>Письмо покупателю</Text>
+                <Button
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => { navigator.clipboard.writeText(aiMessage); message.success('Скопировано') }}
+                >
+                  Копировать
+                </Button>
+              </div>
+              <div style={{ background: '#f5f5f5', borderRadius: 8, padding: 16, whiteSpace: 'pre-wrap', fontSize: 14 }}>
+                {aiMessage || <Alert message="Текст не сгенерирован" type="warning" />}
+              </div>
+            </div>
+
+            {aiAlternatives.length > 0 && (
+              <>
+                <Text strong>Альтернативные товары</Text>
+                <Table
+                  dataSource={aiAlternatives}
+                  rowKey="name"
+                  size="small"
+                  pagination={false}
+                  style={{ marginTop: 8 }}
+                  columns={[
+                    { title: 'Товар', dataIndex: 'name', width: 180 },
+                    { title: 'Почему подходит', dataIndex: 'reason' },
+                  ]}
+                />
+              </>
+            )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

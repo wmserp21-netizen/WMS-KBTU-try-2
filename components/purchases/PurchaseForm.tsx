@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Form, Input, Select, DatePicker, Button, Table,
-  InputNumber, Space, Typography, Modal, Divider, App,
+  InputNumber, Space, Typography, Modal, Divider, App, Spin, Alert,
 } from 'antd'
-import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, RobotOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -45,6 +45,9 @@ export default function PurchaseForm({ backPath, detailBasePath }: Props) {
   const [saving, setSaving] = useState(false)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [addingSupplier, setAddingSupplier] = useState(false)
+  const [forecastLoading, setForecastLoading] = useState(false)
+  const [forecastOpen, setForecastOpen] = useState(false)
+  const [forecasts, setForecasts] = useState<{ product_id: string; suggested_qty: number; note: string; product_name: string; product_sku: string }[]>([])
 
   const loadWarehouses = useCallback(async () => {
     const { data } = await supabase.from('warehouses').select('id, name, owner_id').eq('status', 'active')
@@ -169,6 +172,52 @@ export default function PurchaseForm({ backPath, detailBasePath }: Props) {
     setAddSupplierOpen(false)
     supplierForm.resetFields()
     setAddingSupplier(false)
+  }
+
+  const handleForecast = async () => {
+    if (!selectedWarehouse || products.length === 0) return
+    setForecastLoading(true)
+    try {
+      const res = await fetch('/api/ai/forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          warehouse_id: selectedWarehouse.id,
+          products: products.map(p => ({ id: p.id, name: p.name, sku: p.sku })),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { message.error(json.error ?? 'Ошибка ИИ'); return }
+      const withNames = (json.forecasts ?? []).map((f: { product_id: string; suggested_qty: number; note: string }) => {
+        const prod = products.find(p => p.id === f.product_id)
+        return { ...f, product_name: prod?.name ?? f.product_id, product_sku: prod?.sku ?? '' }
+      })
+      setForecasts(withNames)
+      setForecastOpen(true)
+    } finally {
+      setForecastLoading(false)
+    }
+  }
+
+  const applyForecast = () => {
+    const newLines = [...lines]
+    for (const f of forecasts) {
+      const existing = newLines.find(l => l.product_id === f.product_id)
+      if (existing) {
+        existing.qty_expected = f.suggested_qty
+      } else {
+        const prod = products.find(p => p.id === f.product_id)
+        newLines.push({
+          key: Date.now().toString() + f.product_id,
+          product_id: f.product_id,
+          qty_expected: f.suggested_qty,
+          buy_price: prod?.buy_price ?? 0,
+        })
+      }
+    }
+    setLines(newLines)
+    setForecastOpen(false)
+    message.success('Позиции добавлены в заказ')
   }
 
   const lineColumns: ColumnsType<LineItem> = [
@@ -308,15 +357,25 @@ export default function PurchaseForm({ backPath, detailBasePath }: Props) {
         )}
       />
 
-      <Button
-        type="dashed"
-        icon={<PlusOutlined />}
-        onClick={addLine}
-        style={{ marginTop: 12, width: '100%' }}
-        disabled={!selectedWarehouse}
-      >
-        Добавить позицию
-      </Button>
+      <Space style={{ marginTop: 12, width: '100%' }}>
+        <Button
+          type="dashed"
+          icon={<PlusOutlined />}
+          onClick={addLine}
+          style={{ flex: 1 }}
+          disabled={!selectedWarehouse}
+        >
+          Добавить позицию
+        </Button>
+        <Button
+          icon={<RobotOutlined />}
+          onClick={handleForecast}
+          loading={forecastLoading}
+          disabled={!selectedWarehouse || products.length === 0}
+        >
+          Прогноз закупок
+        </Button>
+      </Space>
 
       <Divider />
 
@@ -326,6 +385,37 @@ export default function PurchaseForm({ backPath, detailBasePath }: Props) {
           Создать поставку
         </Button>
       </Space>
+
+      {/* AI Forecast Modal */}
+      <Modal
+        title={<Space><RobotOutlined /> Прогноз закупок (ИИ)</Space>}
+        open={forecastOpen}
+        onCancel={() => setForecastOpen(false)}
+        onOk={applyForecast}
+        okText="Добавить в заказ"
+        cancelText="Закрыть"
+        width={700}
+      >
+        {forecastLoading ? (
+          <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
+        ) : forecasts.length === 0 ? (
+          <Alert message="Нет данных для прогноза" type="info" />
+        ) : (
+          <Table
+            dataSource={forecasts}
+            rowKey="product_id"
+            size="small"
+            pagination={false}
+            style={{ marginTop: 8 }}
+            columns={[
+              { title: 'Товар', dataIndex: 'product_name' },
+              { title: 'SKU', dataIndex: 'product_sku', width: 100 },
+              { title: 'Рекомендуется', dataIndex: 'suggested_qty', width: 130, render: (v: number) => <Text strong>{v} шт</Text> },
+              { title: 'Обоснование', dataIndex: 'note' },
+            ]}
+          />
+        )}
+      </Modal>
 
       <Modal
         title="Добавить поставщика"
