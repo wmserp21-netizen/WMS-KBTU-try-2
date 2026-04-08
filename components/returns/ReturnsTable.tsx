@@ -76,17 +76,18 @@ export default function ReturnsTable({ viewerRole, basePath }: Props) {
     const whMap: Record<string, string> = {}
     for (const w of whs ?? []) whMap[w.id] = w.name
 
-    const { data: salesData } = await supabase
-      .from('sales')
-      .select('id, number')
-      .in('id', (rList ?? []).map(r => r.sale_id))
+    const returnIds = (rList ?? []).map(r => r.id)
+    const saleIds = (rList ?? []).map(r => r.sale_id)
+
+    const { data: salesData } = saleIds.length > 0
+      ? await supabase.from('sales').select('id, number').in('id', saleIds)
+      : { data: [] }
     const saleMap: Record<string, string> = {}
     for (const s of salesData ?? []) saleMap[s.id] = s.number
 
-    const { data: items } = await supabase
-      .from('return_items')
-      .select('return_id')
-      .in('return_id', (rList ?? []).map(r => r.id))
+    const { data: items } = returnIds.length > 0
+      ? await supabase.from('return_items').select('return_id').in('return_id', returnIds)
+      : { data: [] }
     const countMap: Record<string, number> = {}
     for (const item of items ?? []) {
       countMap[item.return_id] = (countMap[item.return_id] ?? 0) + 1

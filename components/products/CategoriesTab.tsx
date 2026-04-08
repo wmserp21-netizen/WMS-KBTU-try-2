@@ -39,10 +39,10 @@ export default function CategoriesTab({ ownerId }: Props) {
       .order('name')
 
     // Count products per category
-    const { data: products } = await supabase
-      .from('products')
-      .select('category_id')
-      .in('category_id', (cats ?? []).map(c => c.id))
+    const catIds = (cats ?? []).map(c => c.id)
+    const { data: products } = catIds.length > 0
+      ? await supabase.from('products').select('category_id').in('category_id', catIds)
+      : { data: [] }
 
     const countMap: Record<string, number> = {}
     for (const p of products ?? []) {

@@ -81,7 +81,9 @@ export default function SaleDetail({ id, viewerRole, backPath, returnsNewPath }:
     const { data: wh } = await supabase.from('warehouses').select('name').eq('id', s.warehouse_id).single()
 
     const profileIds = [s.created_by, s.updated_by].filter(Boolean)
-    const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', profileIds)
+    const { data: profiles } = profileIds.length > 0
+      ? await supabase.from('profiles').select('id, full_name').in('id', profileIds)
+      : { data: [] }
     const pm: Record<string, string> = {}
     for (const p of profiles ?? []) pm[p.id] = p.full_name ?? p.id
 

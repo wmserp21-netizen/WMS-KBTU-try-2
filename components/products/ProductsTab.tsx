@@ -89,10 +89,10 @@ export default function ProductsTab({ ownerId, readOnly = false }: Props) {
 
     const { data: prods } = await query
 
-    const { data: stockData } = await supabase
-      .from('stock')
-      .select('product_id, warehouse_id, quantity, warehouses(name)')
-      .in('product_id', (prods ?? []).map(p => p.id))
+    const prodIds = (prods ?? []).map(p => p.id)
+    const { data: stockData } = prodIds.length > 0
+      ? await supabase.from('stock').select('product_id, warehouse_id, quantity, warehouses(name)').in('product_id', prodIds)
+      : { data: [] }
 
     const stockMap: Record<string, StockRow[]> = {}
     for (const s of stockData ?? []) {

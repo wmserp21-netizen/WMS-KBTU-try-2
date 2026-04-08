@@ -87,10 +87,10 @@ export default function PurchasesTable({ viewerRole, basePath }: Props) {
     for (const s of sups ?? []) { supMap[s.id] = s.name }
 
     // Get item counts
-    const { data: items } = await supabase
-      .from('purchase_items')
-      .select('purchase_id')
-      .in('purchase_id', (pList ?? []).map(p => p.id))
+    const purchaseIds = (pList ?? []).map(p => p.id)
+    const { data: items } = purchaseIds.length > 0
+      ? await supabase.from('purchase_items').select('purchase_id').in('purchase_id', purchaseIds)
+      : { data: [] }
 
     const countMap: Record<string, number> = {}
     for (const item of items ?? []) {
