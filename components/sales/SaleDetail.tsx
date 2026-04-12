@@ -118,6 +118,17 @@ export default function SaleDetail({ id, viewerRole, backPath, returnsNewPath }:
     setActing(true)
     const userId = await getCurrentUserId()
 
+    // Load product details and warehouse owner for deficit notifications
+    const productIds = sale.items.map(i => i.product_id)
+    const { data: productsData } = productIds.length > 0
+      ? await supabase.from('products').select('id, sku, min_stock').in('id', productIds)
+      : { data: [] }
+    const productMeta: Record<string, { sku: string; min_stock: number }> = {}
+    for (const p of productsData ?? []) productMeta[p.id] = { sku: p.sku ?? '', min_stock: p.min_stock ?? 0 }
+
+    const { data: whData } = await supabase.from('warehouses').select('owner_id').eq('id', sale.warehouse_id).single()
+    const ownerId = whData?.owner_id ?? null
+
     for (const item of sale.items) {
       const { data: cur } = await supabase
         .from('stock')
@@ -126,9 +137,27 @@ export default function SaleDetail({ id, viewerRole, backPath, returnsNewPath }:
         .eq('warehouse_id', sale.warehouse_id)
         .single()
 
+      const newQty = (cur?.quantity ?? 0) - item.qty
       await supabase.from('stock').update({
-        quantity: (cur?.quantity ?? 0) - item.qty,
+        quantity: newQty,
       }).eq('product_id', item.product_id).eq('warehouse_id', sale.warehouse_id)
+
+      // Fire Telegram notification if stock falls below min_stock
+      const meta = productMeta[item.product_id]
+      if (meta && newQty < meta.min_stock && ownerId) {
+        fetch('/api/notifications/telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_name: item.product_name,
+            sku: meta.sku,
+            warehouse_name: sale.warehouse_name,
+            current_qty: newQty,
+            min_stock: meta.min_stock,
+            owner_id: ownerId,
+          }),
+        }).catch(() => {})
+      }
     }
 
     await supabase.from('sales').update({

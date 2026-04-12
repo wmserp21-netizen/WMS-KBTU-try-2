@@ -60,9 +60,10 @@ interface ReorderRow {
 interface Props {
   viewerRole: 'admin' | 'owner'
   ownerIds?: string[]   // admin only: list of owners to show in filter
+  defaultTab?: string
 }
 
-export default function ReportsPage({ viewerRole, ownerIds }: Props) {
+export default function ReportsPage({ viewerRole, ownerIds, defaultTab }: Props) {
   const supabase = createClient()
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
@@ -392,6 +393,7 @@ export default function ReportsPage({ viewerRole, ownerIds }: Props) {
       </Space>
 
       <Tabs
+        defaultActiveKey={defaultTab ?? 'stock'}
         items={[
           {
             key: 'stock',

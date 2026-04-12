@@ -28,6 +28,7 @@ import {
   MenuUnfoldOutlined,
   LogoutOutlined,
   DatabaseOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import { createClient } from '@/lib/supabase/client'
 import type { UserRole } from '@/lib/auth'
@@ -54,6 +55,7 @@ function getMenuItems(role: UserRole): MenuItem[] {
       { key: '/admin/returns', icon: <RollbackOutlined />, label: 'Возвраты' },
       { key: '/admin/finance', icon: <DollarOutlined />, label: 'Финансы' },
       { key: '/admin/reports', icon: <BarChartOutlined />, label: 'Отчёты' },
+      { key: '/admin/notifications', icon: <BellOutlined />, label: 'Уведомления' },
     ]
   }
 
@@ -68,6 +70,7 @@ function getMenuItems(role: UserRole): MenuItem[] {
       { key: '/owner/returns', icon: <RollbackOutlined />, label: 'Возвраты' },
       { key: '/owner/finance', icon: <DollarOutlined />, label: 'Финансы' },
       { key: '/owner/reports', icon: <BarChartOutlined />, label: 'Отчёты' },
+      { key: '/owner/notifications', icon: <BellOutlined />, label: 'Уведомления' },
     ]
   }
 

@@ -2,33 +2,24 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import {
-  Row, Col, Card, Statistic, Select, Segmented, Typography, Space, Spin,
+  Row, Col, Card, Statistic, Select, Typography, Space, Spin, DatePicker,
 } from 'antd'
 import {
   DollarOutlined, ShoppingOutlined, WarningOutlined,
   TeamOutlined, BankOutlined, StockOutlined,
 } from '@ant-design/icons'
 import { createClient } from '@/lib/supabase/client'
-import dayjs from 'dayjs'
+import { useRouter } from 'next/navigation'
+import dayjs, { type Dayjs } from 'dayjs'
 
 const { Title } = Typography
-
-type Period = 'today' | 'week' | 'month' | 'quarter'
-
-function getPeriodRange(period: Period): [string, string] {
-  const now = dayjs()
-  switch (period) {
-    case 'today': return [now.format('YYYY-MM-DD'), now.format('YYYY-MM-DD')]
-    case 'week': return [now.startOf('week').format('YYYY-MM-DD'), now.endOf('week').format('YYYY-MM-DD')]
-    case 'month': return [now.startOf('month').format('YYYY-MM-DD'), now.endOf('month').format('YYYY-MM-DD')]
-    case 'quarter': return [now.startOf('month').subtract(2, 'month').format('YYYY-MM-DD'), now.endOf('month').format('YYYY-MM-DD')]
-  }
-}
+const { RangePicker } = DatePicker
 
 export default function AdminDashboardPage() {
   const supabase = createClient()
+  const router = useRouter()
 
-  const [period, setPeriod] = useState<Period>('month')
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([dayjs().startOf('month'), dayjs()])
   const [ownerFilter, setOwnerFilter] = useState<string | null>(null)
   const [warehouseFilter, setWarehouseFilter] = useState<string[]>([])
   const [owners, setOwners] = useState<{ id: string; label: string }[]>([])
@@ -51,21 +42,19 @@ export default function AdminDashboardPage() {
 
   useEffect(() => { loadMeta() }, [loadMeta])
 
-  // Filter warehouses shown in dropdown by selected owner
   const visibleWarehouses = ownerFilter
     ? warehouses.filter(w => w.owner_id === ownerFilter)
     : warehouses
 
   const compute = useCallback(async () => {
     setLoading(true)
-    const [from, to] = getPeriodRange(period)
+    const from = dateRange[0].format('YYYY-MM-DD')
+    const to = dateRange[1].format('YYYY-MM-DD')
 
-    // Determine which warehouse IDs to use
-    let whIds: string[] = warehouseFilter.length > 0
+    const whIds: string[] = warehouseFilter.length > 0
       ? warehouseFilter
       : (ownerFilter ? warehouses.filter(w => w.owner_id === ownerFilter).map(w => w.id) : warehouses.map(w => w.id))
 
-    // ── Turnover (completed sales in period) ──
     let salesQ = supabase
       .from('sales')
       .select('total')
@@ -76,18 +65,14 @@ export default function AdminDashboardPage() {
     const { data: salesData } = await salesQ
     setTurnover((salesData ?? []).reduce((s, r) => s + r.total, 0))
 
-    // ── Stock-based metrics ──
     let stockQ = supabase
       .from('stock')
       .select('quantity, warehouse_id, products(sell_price, buy_price, min_stock, id)')
     if (whIds.length > 0) stockQ = stockQ.in('warehouse_id', whIds)
     const { data: stockData } = await stockQ
 
-    let potMoney = 0
-    let costVal = 0
-    let lowCount = 0
+    let potMoney = 0, costVal = 0, lowCount = 0
     const skuSet = new Set<string>()
-
     for (const row of stockData ?? []) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const p = row.products as any
@@ -102,34 +87,35 @@ export default function AdminDashboardPage() {
     setLowStockCount(lowCount)
     setSkuCount(skuSet.size)
 
-    // ── Worker count ──
     let wkQ = supabase.from('warehouse_workers').select('worker_id')
     if (whIds.length > 0) wkQ = wkQ.in('warehouse_id', whIds)
     const { data: wkData } = await wkQ
-    const uniqueWorkers = new Set((wkData ?? []).map(w => w.worker_id))
-    setWorkerCount(uniqueWorkers.size)
+    setWorkerCount(new Set((wkData ?? []).map(w => w.worker_id)).size)
 
     setLoading(false)
-  }, [period, ownerFilter, warehouseFilter, warehouses]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dateRange, ownerFilter, warehouseFilter, warehouses]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (warehouses.length >= 0) compute() }, [compute]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmt = (v: number) => v.toLocaleString('ru-RU')
+
+  const clickableCard = (onClick: () => void) => ({
+    style: { cursor: 'pointer' },
+    onClick,
+    styles: { body: { transition: 'opacity 0.15s' } },
+    hoverable: true,
+  })
 
   return (
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Дашборд администратора</Title>
 
       <Space wrap style={{ marginBottom: 20 }}>
-        <Segmented
-          options={[
-            { label: 'Сегодня', value: 'today' },
-            { label: 'Неделя', value: 'week' },
-            { label: 'Месяц', value: 'month' },
-            { label: 'Квартал', value: 'quarter' },
-          ]}
-          value={period}
-          onChange={v => setPeriod(v as Period)}
+        <RangePicker
+          format="DD.MM.YYYY"
+          value={dateRange}
+          onChange={v => { if (v?.[0] && v?.[1]) setDateRange([v[0], v[1]]) }}
+          allowClear={false}
         />
         <Select
           placeholder="Все владельцы"
@@ -156,72 +142,45 @@ export default function AdminDashboardPage() {
       ) : (
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={8}>
-            <Card>
-              <Statistic
-                title="Оборот за период"
-                value={turnover}
-                suffix="₸"
-                prefix={<DollarOutlined />}
-                styles={{ content: { color: '#1677ff' } }}
-                formatter={v => fmt(Number(v))}
-              />
+            <Card {...clickableCard(() => {
+              const from = dateRange[0].format('YYYY-MM-DD')
+              const to = dateRange[1].format('YYYY-MM-DD')
+              const whParam = warehouseFilter.length > 0 ? warehouseFilter.join(',') : ''
+              const q = whParam ? `?from=${from}&to=${to}&warehouses=${whParam}` : `?from=${from}&to=${to}`
+              router.push(`/admin/finance${q}`)
+            })}>
+              <Statistic title="Оборот за период" value={turnover} suffix="₸"
+                prefix={<DollarOutlined />} styles={{ content: { color: '#1677ff' } }} formatter={v => fmt(Number(v))} />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <Card {...clickableCard(() => router.push('/admin/reports?tab=stock'))}>
+              <Statistic title="Потенц. деньги в товаре" value={potentialMoney} suffix="₸"
+                prefix={<StockOutlined />} styles={{ content: { color: '#52c41a' } }} formatter={v => fmt(Number(v))} />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <Card {...clickableCard(() => router.push('/admin/reports?tab=stock'))}>
+              <Statistic title="Кол-во SKU" value={skuCount} suffix="позиций"
+                prefix={<ShoppingOutlined />} styles={{ content: { color: '#722ed1' } }} />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <Card {...clickableCard(() => router.push('/admin/reports?tab=stock'))}>
+              <Statistic title="Себестоимость склада" value={costValue} suffix="₸"
+                prefix={<BankOutlined />} styles={{ content: { color: '#fa8c16' } }} formatter={v => fmt(Number(v))} />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={8}>
+            <Card {...clickableCard(() => router.push('/admin/reports?tab=reorder'))}>
+              <Statistic title="Требуют пополнения" value={lowStockCount} suffix="товаров"
+                prefix={<WarningOutlined />} styles={{ content: { color: lowStockCount > 0 ? '#ff4d4f' : '#52c41a' } }} />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={8}>
             <Card>
-              <Statistic
-                title="Потенц. деньги в товаре"
-                value={potentialMoney}
-                suffix="₸"
-                prefix={<StockOutlined />}
-                styles={{ content: { color: '#52c41a' } }}
-                formatter={v => fmt(Number(v))}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={8}>
-            <Card>
-              <Statistic
-                title="Кол-во SKU"
-                value={skuCount}
-                suffix="позиций"
-                prefix={<ShoppingOutlined />}
-                styles={{ content: { color: '#722ed1' } }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={8}>
-            <Card>
-              <Statistic
-                title="Себестоимость склада"
-                value={costValue}
-                suffix="₸"
-                prefix={<BankOutlined />}
-                styles={{ content: { color: '#fa8c16' } }}
-                formatter={v => fmt(Number(v))}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={8}>
-            <Card>
-              <Statistic
-                title="Требуют пополнения"
-                value={lowStockCount}
-                suffix="товаров"
-                prefix={<WarningOutlined />}
-                styles={{ content: { color: lowStockCount > 0 ? '#ff4d4f' : '#52c41a' } }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={8}>
-            <Card>
-              <Statistic
-                title="Кол-во рабочих"
-                value={workerCount}
-                suffix="чел."
-                prefix={<TeamOutlined />}
-                styles={{ content: { color: '#13c2c2' } }}
-              />
+              <Statistic title="Кол-во рабочих" value={workerCount} suffix="чел."
+                prefix={<TeamOutlined />} styles={{ content: { color: '#13c2c2' } }} />
             </Card>
           </Col>
         </Row>

@@ -1,5 +1,9 @@
+'use client'
+
+import { useSearchParams } from 'next/navigation'
 import ReportsPage from '@/components/reports/ReportsPage'
 
 export default function OwnerReportsPage() {
-  return <ReportsPage viewerRole="owner" />
+  const tab = useSearchParams().get('tab') ?? 'stock'
+  return <ReportsPage viewerRole="owner" defaultTab={tab} />
 }

@@ -37,17 +37,20 @@ interface TopProduct {
 
 interface Props {
   viewerRole: 'admin' | 'owner'
+  initialDateRange?: [string, string]   // 'YYYY-MM-DD'
+  initialWarehouses?: string[]          // warehouse ids
 }
 
-export default function FinancePage({ viewerRole }: Props) {
+export default function FinancePage({ viewerRole, initialDateRange, initialWarehouses }: Props) {
   const supabase = createClient()
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
-  const [warehouseFilter, setWarehouseFilter] = useState<string[]>([])
-  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
-    dayjs().startOf('month'),
-    dayjs().endOf('month'),
-  ])
+  const [warehouseFilter, setWarehouseFilter] = useState<string[]>(initialWarehouses ?? [])
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(
+    initialDateRange
+      ? [dayjs(initialDateRange[0]), dayjs(initialDateRange[1])]
+      : [dayjs().startOf('month'), dayjs().endOf('month')]
+  )
 
   // Metrics
   const [revenue, setRevenue] = useState(0)
